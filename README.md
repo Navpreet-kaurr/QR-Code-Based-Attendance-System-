@@ -2,7 +2,7 @@
 
 A dual-interface attendance tracking system that uses QR codes for student attendance. Features both a console application and a web-based frontend.
 
-Live Demo- 
+Live Demo - https://navpreet-kaurr.github.io/QR-Code-Based-Attendance-System-/
 
 ## Features
 
