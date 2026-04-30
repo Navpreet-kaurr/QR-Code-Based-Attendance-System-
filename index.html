@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QR Attendance System</title>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 1200px; margin: 0 auto; padding: 20px; background: #f8f9fa; }
+        .section { margin: 20px 0; padding: 20px; border: 1px solid #ddd; border-radius: 8px; background: white; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        h1 { text-align: center; color: #333; }
+        h2 { color: #007bff; }
+        button { padding: 10px 20px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; margin: 5px; }
+        button:hover { background: #0056b3; }
+        button:disabled { background: #6c757d; cursor: not-allowed; }
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        th, td { border: 1px solid #ddd; padding: 12px; text-align: left; }
+        th { background: #007bff; color: white; }
+        #qrImg { display: block; margin: 20px auto; border: 2px solid #007bff; max-width: 300px; }
+        #countdown { font-weight: bold; font-size: 18px; color: #dc3545; text-align: center; }
+        input { padding: 10px; margin: 5px; border: 1px solid #ddd; border-radius: 4px; font-size: 16px; }
+        .msg { margin-top: 10px; font-weight: bold; }
+        .success { color: #28a745; }
+        .error { color: #dc3545; }
+        #openQR { background: #28a745; }
+        #openQR:hover { background: #218838; }
+    </style>
+</head>
+<body>
+    <h1>QR Code Attendance System (Web Frontend)</h1>
+
+    <div class="section">
+        <h2>1. Add Student</h2>
+        <input id="studentId" type="number" placeholder="Enter ID" min="1">
+        <input id="studentName" type="text" placeholder="Enter Name">
+        <button onclick="addStudent()">Add Student</button>
+        <p id="studentMsg" class="msg"></p>
+    </div>
+
+    <div class="section">
+        <h2>2. List Students</h2>
+        <button onclick="listStudents()">Refresh List</button>
+        <div id="studentList"></div>
+    </div>
+
+    <div class="section">
+        <h2>3. Generate QR Code</h2>
+        <button onclick="generateQR()">Generate New QR</button>
+        <button id="openQR" onclick="openQRInBrowser()" style="display:none;" >Open QR in New Tab</button>
+        <img id="qrImg" style="display: none;">
+        <p id="qrInfo"></p>
+        <p id="countdown"></p>
+    </div>
+
+    <div class="section">
+        <h2>4. Mark Attendance</h2>
+        <input id="attendId" type="number" placeholder="Student ID">
+        <input id="attendToken" type="text" placeholder="Token from QR">
+        <button onclick="markAttendance()">Mark Attendance</button>
+        <p id="attendMsg" class="msg"></p>
+    </div>
+
+    <div class="section">
+        <h2>5. Show Attendance</h2>
+        <input id="showDate" type="date">
+        <button onclick="showAttendance()">Show</button>
+        <div id="attendanceList"></div>
+    </div>
+
+    <script>
+        let students = JSON.parse(localStorage.getItem('students') || '{}');
+        let attendance = JSON.parse(localStorage.getItem('attendance') || '[]');
+        let currentQR = JSON.parse(localStorage.getItem('currentQR') || 'null');
+
+        function saveData() {
+            localStorage.setItem('students', JSON.stringify(students));
+            localStorage.setItem('attendance', JSON.stringify(attendance));
+            localStorage.setItem('currentQR', JSON.stringify(currentQR));
+        }
+
+        function addStudent() {
+            const idEl = document.getElementById('studentId');
+            const nameEl = document.getElementById('studentName');
+            const id = parseInt(idEl.value);
+            const name = nameEl.value.trim();
+            const msgEl = document.getElementById('studentMsg');
+            if (isNaN(id) || !name) {
+                msgEl.textContent = 'Please enter valid ID and name';
+                msgEl.className = 'msg error';
+                return;
+            }
+            if (students[id]) {
+                msgEl.textContent = 'Student ID already exists';
+                msgEl.className = 'msg error';
+                return;
+            }
+            students[id] = {id, name};
+            saveData();
+            listStudents();
+            msgEl.textContent = 'Student added successfully';
+            msgEl.className = 'msg success';
+            idEl.value = '';
+            nameEl.value = '';
+        }
+
+        function listStudents() {
+            const container = document.getElementById('studentList');
+            if (Object.keys(students).length === 0) {
+                container.innerHTML = '<p>No students added yet.</p>';
+                return;
+            }
+            let html = '<table><tr><th>ID</th><th>Name</th></tr>';
+            Object.values(students).sort((a, b) => a.id - b.id).forEach(s => {
+                html += `<tr><td>${s.id}</td><td>${s.name}</td></tr>`;
+            });
+            html += '</table>';
+            container.innerHTML = html;
+        }
+
+        function generateQR() {
+            currentQR = {
+                token: crypto.randomUUID(),
+                expiry: Date.now() + 5 * 60 * 1000
+            };
+            saveData();
+            updateQR();
+        }
+
+        function updateQR() {
+            const qrImg = document.getElementById('qrImg');
+            const info = document.getElementById('qrInfo');
+            const countdownEl = document.getElementById('countdown');
+            const openBtn = document.getElementById('openQR');
+            if (currentQR && Date.now() < currentQR.expiry) {
+                const qrUrl = `https://chart.googleapis.com/chart?chs=400x400&cht=qr&chl=${encodeURIComponent(currentQR.token)}`;
+                qrImg.src = qrUrl;
+                qrImg.style.display = 'block';
+                openBtn.style.display = 'inline-block';
+                info.innerHTML = `<strong>Token:</strong> ${currentQR.token}<br><strong>Valid until:</strong> ${new Date(currentQR.expiry).toLocaleString()}`;
+                startCountdown();
+            } else {
+                qrImg.style.display = 'none';
+                openBtn.style.display = 'none';
+                info.textContent = 'No active QR code. Click "Generate New QR".';
+                countdownEl.textContent = '';
+            }
+        }
+
+        function openQRInBrowser() {
+            if (currentQR) {
+                const qrUrl = `https://chart.googleapis.com/chart?chs=500x500&cht=qr&chl=${encodeURIComponent(currentQR.token)}`;
+                window.open(qrUrl, '_blank');
+            }
+        }
+
+        function startCountdown() {
+            const countdownEl = document.getElementById('countdown');
+            const tick = () => {
+                if (!currentQR || Date.now() >= currentQR.expiry) {
+                    countdownEl.textContent = 'QR EXPIRED';
+                    currentQR = null;
+                    saveData();
+                    updateQR();
+                    return;
+                }
+                const timeLeft = Math.round((currentQR.expiry - Date.now()) / 1000);
+                countdownEl.textContent = `Time left: ${timeLeft}s`;
+                setTimeout(tick, 1000);
+            };
+            tick();
+        }
+
+        function markAttendance() {
+            const idEl = document.getElementById('attendId');
+            const tokenEl = document.getElementById('attendToken');
+            const id = parseInt(idEl.value);
+            const token = tokenEl.value.trim();
+            const msgEl = document.getElementById('attendMsg');
+            if (!currentQR || Date.now() >= currentQR.expiry) {
+                msgEl.textContent = 'No active or expired QR. Generate new one.';
+                msgEl.className = 'msg error';
+                return;
+            }
+            if (token !== currentQR.token) {
+                msgEl.textContent = 'Invalid token. Enter exact token from QR.';
+                msgEl.className = 'msg error';
+                return;
+            }
+            if (!students[id]) {
+                msgEl.textContent = 'Student ID not found. Add student first.';
+                msgEl.className = 'msg error';
+                return;
+            }
+            const today = new Date().toISOString().split('T')[0];
+            if (attendance.some(r => r.studentId === id && r.date === today)) {
+                msgEl.textContent = 'Attendance already marked today.';
+                msgEl.className = 'msg error';
+                return;
+            }
+            const record = {
+                studentId: id,
+                date: today,
+                token,
+                timestamp: new Date().toISOString()
+            };
+            attendance.push(record);
+            saveData();
+            msgEl.textContent = `Marked for ${students[id].name} on ${today}`;
+            msgEl.className = 'msg success';
+            idEl.value = '';
+            tokenEl.value = '';
+            showAttendance(); // refresh
+        }
+
+        function showAttendance() {
+            const dateEl = document.getElementById('showDate');
+            const dateStr = dateEl.value || new Date().toISOString().split('T')[0];
+            const filtered = attendance.filter(r => r.date === dateStr).sort((a,b) => a.studentId - b.studentId);
+            const container = document.getElementById('attendanceList');
+            if (filtered.length === 0) {
+                container.innerHTML = '<p>No records for ' + dateStr + '</p>';
+                return;
+            }
+            let html = '<table><tr><th>ID</th><th>Name</th><th>Date</th><th>Time</th></tr>';
+            filtered.forEach(r => {
+                const name = students[r.studentId] ? students[r.studentId].name : 'Unknown (deleted?)';
+                html += `<tr><td>${r.studentId}</td><td>${name}</td><td>${r.date}</td><td>${new Date(r.timestamp).toLocaleString()}</td></tr>`;
+            });
+            html += '</table>';
+            container.innerHTML = html;
+        }
+
+        // Init
+        listStudents();
+        if (!currentQR) generateQR();
+        else updateQR();
+    </script>
+</body>
+</html>
